@@ -29,9 +29,10 @@ async function generateAiTests(prompt, context) {
   const systemPrompt = `You are a test planner. Given a web application and a user request, output a JSON array of test plans.
 
 RULES:
-- Output ONLY valid JSON — no markdown, no explanation, no backticks.
+- Output ONLY a JSON object with a "tests" key containing an array: {"tests": [...]}
 - Each test is an object with "name" (string) and "steps" (array).
 - Each step is an object with an "action" and parameters.
+- No markdown, no explanation — pure JSON only.
 
 AVAILABLE ACTIONS:
   {"action": "goto", "path": "/login"}
@@ -86,6 +87,7 @@ Output the JSON test plan array now.`;
       ],
       temperature: 0.2,
       max_tokens: 3000,
+      response_format: { type: 'json_object' },
     }),
     new Promise((_, reject) => setTimeout(() => reject(new Error('OpenAI timed out after 55s')), 55000)),
   ]);
@@ -93,10 +95,21 @@ Output the JSON test plan array now.`;
   let raw = response.choices[0].message.content.trim();
   raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
 
-  console.log(`[AI] Raw plan:\n${raw.substring(0, 1500)}`);
+  console.log(`[AI] Raw response:\n${raw.substring(0, 2000)}`);
 
-  const tests = JSON.parse(raw);
-  if (!Array.isArray(tests) || tests.length === 0) throw new Error('OpenAI returned empty test plan');
+  let tests;
+  try {
+    const parsed = JSON.parse(raw);
+    // Handle both {"tests": [...]} and direct [...]
+    tests = Array.isArray(parsed) ? parsed : (parsed.tests || parsed.test_plan || Object.values(parsed)[0]);
+    if (!Array.isArray(tests)) tests = [parsed]; // single test object
+  } catch (parseErr) {
+    console.error(`[AI] JSON parse failed: ${parseErr.message}`);
+    console.error(`[AI] Raw content was: ${raw.substring(0, 500)}`);
+    throw new Error(`OpenAI returned invalid JSON: ${parseErr.message}`);
+  }
+
+  if (!tests || tests.length === 0) throw new Error('OpenAI returned empty test plan');
 
   // Convert JSON plan to bulletproof Playwright spec
   return planToPlaywright(tests, baseUrl, authHeaders);
