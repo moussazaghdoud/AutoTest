@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { getDb, all, get, run } = require('./db/db');
+const { encrypt, decrypt } = require('./utils/crypto');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -58,25 +59,26 @@ app.get('/api/events/:type/:id', (req, res) => {
 
 app.get('/api/targets', async (req, res) => {
   const db = await getDb();
-  res.json(all(db, 'SELECT * FROM targets ORDER BY created_at DESC'));
+  res.json(all(db, 'SELECT * FROM targets ORDER BY created_at DESC').map(decryptTarget));
 });
 
 app.post('/api/targets', async (req, res) => {
   const db = await getDb();
   const { name, base_url, auth_type, auth_config, settings } = req.body;
   if (!name || !base_url) return res.status(400).json({ error: 'name and base_url required' });
+  const encryptedConfig = encrypt(JSON.stringify(auth_config || {}));
   const result = run(db,
     `INSERT INTO targets (name, base_url, auth_type, auth_config, settings) VALUES (?, ?, ?, ?, ?)`,
-    [name, base_url, auth_type || 'none', JSON.stringify(auth_config || {}), JSON.stringify(settings || {})]
+    [name, base_url, auth_type || 'none', encryptedConfig, JSON.stringify(settings || {})]
   );
-  res.status(201).json(get(db, 'SELECT * FROM targets WHERE id = ?', [result.lastInsertRowid]));
+  res.status(201).json(decryptTarget(get(db, 'SELECT * FROM targets WHERE id = ?', [result.lastInsertRowid])));
 });
 
 app.get('/api/targets/:id', async (req, res) => {
   const db = await getDb();
   const target = get(db, 'SELECT * FROM targets WHERE id = ?', [req.params.id]);
   if (!target) return res.status(404).json({ error: 'Target not found' });
-  res.json(target);
+  res.json(decryptTarget(target));
 });
 
 app.put('/api/targets/:id', async (req, res) => {
@@ -84,18 +86,20 @@ app.put('/api/targets/:id', async (req, res) => {
   const existing = get(db, 'SELECT * FROM targets WHERE id = ?', [req.params.id]);
   if (!existing) return res.status(404).json({ error: 'Target not found' });
   const { name, base_url, auth_type, auth_config, settings } = req.body;
+  const existingConfig = JSON.parse(decrypt(existing.auth_config || '{}'));
+  const encryptedConfig = encrypt(JSON.stringify(auth_config || existingConfig));
   run(db,
     `UPDATE targets SET name=?, base_url=?, auth_type=?, auth_config=?, settings=?, updated_at=datetime('now') WHERE id=?`,
     [
       name || existing.name,
       base_url || existing.base_url,
       auth_type || existing.auth_type,
-      JSON.stringify(auth_config || JSON.parse(existing.auth_config || '{}')),
+      encryptedConfig,
       JSON.stringify(settings || JSON.parse(existing.settings || '{}')),
       req.params.id,
     ]
   );
-  res.json(get(db, 'SELECT * FROM targets WHERE id = ?', [req.params.id]));
+  res.json(decryptTarget(get(db, 'SELECT * FROM targets WHERE id = ?', [req.params.id])));
 });
 
 app.delete('/api/targets/:id', async (req, res) => {
@@ -115,7 +119,7 @@ app.get('/api/targets/:id/scans', async (req, res) => {
 
 app.post('/api/targets/:id/scan', async (req, res) => {
   const db = await getDb();
-  const target = get(db, 'SELECT * FROM targets WHERE id = ?', [req.params.id]);
+  const target = decryptTarget(get(db, 'SELECT * FROM targets WHERE id = ?', [req.params.id]));
   if (!target) return res.status(404).json({ error: 'Target not found' });
 
   const result = run(db,
@@ -164,7 +168,7 @@ app.get('/api/scans/:id/forms', async (req, res) => {
 
 app.post('/api/targets/:id/run', async (req, res) => {
   const db = await getDb();
-  const target = get(db, 'SELECT * FROM targets WHERE id = ?', [req.params.id]);
+  const target = decryptTarget(get(db, 'SELECT * FROM targets WHERE id = ?', [req.params.id]));
   if (!target) return res.status(404).json({ error: 'Target not found' });
 
   const { scan_id, test_types, concurrency, ai_prompt, ai_only } = req.body;
@@ -377,6 +381,17 @@ ${categoryHtml}
 function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Decrypt auth_config when reading a target from DB
+function decryptTarget(target) {
+  if (!target) return target;
+  try {
+    target.auth_config = decrypt(target.auth_config || '{}');
+  } catch {
+    // If decryption fails, leave as-is (legacy plain text data)
+  }
+  return target;
 }
 
 // ========== SPA Fallback ==========
