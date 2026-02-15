@@ -20,14 +20,17 @@ const Runner = {
     document.getElementById('runnerTargetSelect').addEventListener('change', () => this.loadScansForTarget());
 
     // AI Only toggle — disable/enable standard test type checkboxes
-    document.getElementById('aiOnlyToggle').addEventListener('change', (e) => {
+    const aiToggle = document.getElementById('aiOnlyToggle');
+    const applyAiOnlyState = (checked) => {
       const checkboxes = document.querySelectorAll('#testTypeCheckboxes input');
       for (const cb of checkboxes) {
-        cb.disabled = e.target.checked;
-        if (e.target.checked) cb.parentElement.style.opacity = '0.4';
-        else cb.parentElement.style.opacity = '1';
+        cb.disabled = checked;
+        cb.parentElement.style.opacity = checked ? '0.4' : '1';
       }
-    });
+    };
+    aiToggle.addEventListener('change', (e) => applyAiOnlyState(e.target.checked));
+    // Apply initial state (checkbox may be checked by default)
+    applyAiOnlyState(aiToggle.checked);
   },
 
   async loadTargetSelect() {
