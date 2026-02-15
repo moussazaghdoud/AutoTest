@@ -17,7 +17,14 @@ function addSseClient(type, id, res) {
   const key = `${type}:${id}`;
   if (!sseClients.has(key)) sseClients.set(key, []);
   sseClients.get(key).push(res);
+
+  // Keepalive ping every 15s to prevent Railway/proxy from closing idle connections
+  const keepalive = setInterval(() => {
+    try { res.write(':\n\n'); } catch { clearInterval(keepalive); }
+  }, 15000);
+
   res.on('close', () => {
+    clearInterval(keepalive);
     const arr = sseClients.get(key);
     if (arr) {
       const idx = arr.indexOf(res);

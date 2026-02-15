@@ -37,13 +37,25 @@ const API = {
 
   sse(type, id, handlers) {
     const es = new EventSource(`/api/events/${type}/${id}`);
+    let errorCount = 0;
+
     for (const [event, fn] of Object.entries(handlers)) {
-      es.addEventListener(event, (e) => fn(JSON.parse(e.data)));
+      es.addEventListener(event, (e) => {
+        errorCount = 0; // reset on successful message
+        fn(JSON.parse(e.data));
+      });
     }
+
     es.onerror = () => {
-      es.close();
-      if (handlers.error) handlers.error({ message: 'Connection lost' });
+      errorCount++;
+      // EventSource auto-reconnects on transient errors.
+      // Only give up after 5 consecutive failures (no successful messages in between).
+      if (errorCount >= 5) {
+        es.close();
+        if (handlers.error) handlers.error({ message: 'Connection lost' });
+      }
     };
+
     return es;
   },
 };
