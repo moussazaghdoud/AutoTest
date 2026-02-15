@@ -4,6 +4,7 @@
   "description": "Generic web application testing framework with auto-discovery",
   "main": "server.js",
   "scripts": {
+    "build": "npx playwright install --with-deps chromium",
     "start": "node server.js",
     "test": "npx playwright test"
   },
