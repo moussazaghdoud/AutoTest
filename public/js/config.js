@@ -35,10 +35,24 @@ const Config = {
     const fields = {
       none: '',
       form: `
-        <div class="form-group"><label>Login URL</label><input type="text" name="login_url" value="${Components.escHtml(cfg.login_url || '')}" placeholder="/login"></div>
-        <div class="form-group"><label>Username Field Selector</label><input type="text" name="username_selector" value="${Components.escHtml(cfg.username_selector || '')}" placeholder='input[name="email"]'></div>
-        <div class="form-group"><label>Password Field Selector</label><input type="text" name="password_selector" value="${Components.escHtml(cfg.password_selector || '')}" placeholder='input[name="password"]'></div>
-        <div class="form-group"><label>Submit Selector</label><input type="text" name="submit_selector" value="${Components.escHtml(cfg.submit_selector || '')}" placeholder='button[type="submit"]'></div>
+        <div class="form-group">
+          <label>Login URL</label>
+          <input type="text" name="login_url" value="${Components.escHtml(cfg.login_url || '')}" placeholder="/login">
+        </div>
+        <div class="form-group" style="position:relative">
+          <label>Username Field Selector</label>
+          <input type="text" name="username_selector" id="autodetectUsername" value="${Components.escHtml(cfg.username_selector || '')}" placeholder="Auto-detected">
+        </div>
+        <div class="form-group">
+          <label>Password Field Selector</label>
+          <input type="text" name="password_selector" id="autodetectPassword" value="${Components.escHtml(cfg.password_selector || '')}" placeholder="Auto-detected">
+        </div>
+        <div class="form-group">
+          <label>Submit Selector</label>
+          <input type="text" name="submit_selector" id="autodetectSubmit" value="${Components.escHtml(cfg.submit_selector || '')}" placeholder="Auto-detected">
+        </div>
+        <button type="button" class="btn" id="autodetectBtn" style="margin-bottom:12px;font-size:13px" onclick="Config.autoDetectLogin()">Auto-detect selectors</button>
+        <div id="autodetectStatus" style="font-size:12px;color:var(--text-secondary);margin-bottom:8px"></div>
         <div class="form-group"><label>Username</label><input type="text" name="username" value="${Components.escHtml(cfg.username || '')}"></div>
         <div class="form-group"><label>Password</label><input type="password" name="password" value="${Components.escHtml(cfg.password || '')}"></div>`,
       basic: `
@@ -56,6 +70,50 @@ const Config = {
     };
 
     container.innerHTML = fields[type] || '';
+  },
+
+  async autoDetectLogin() {
+    const baseUrl = document.getElementById('targetUrl').value.trim();
+    const loginPath = document.querySelector('input[name="login_url"]')?.value.trim() || '/login';
+    if (!baseUrl) return alert('Enter the Base URL first');
+
+    const btn = document.getElementById('autodetectBtn');
+    const status = document.getElementById('autodetectStatus');
+    btn.disabled = true;
+    btn.textContent = 'Detecting...';
+    status.textContent = 'Visiting login page and scanning form fields...';
+
+    try {
+      const url = baseUrl.replace(/\/$/, '') + (loginPath.startsWith('/') ? loginPath : '/' + loginPath);
+      const result = await API.post('/api/detect-login', { url });
+
+      if (result.username_selector) {
+        document.getElementById('autodetectUsername').value = result.username_selector;
+      }
+      if (result.password_selector) {
+        document.getElementById('autodetectPassword').value = result.password_selector;
+      }
+      if (result.submit_selector) {
+        document.getElementById('autodetectSubmit').value = result.submit_selector;
+      }
+
+      const found = [
+        result.username_selector ? 'username' : null,
+        result.password_selector ? 'password' : null,
+        result.submit_selector ? 'submit' : null,
+      ].filter(Boolean);
+
+      status.textContent = found.length > 0
+        ? `Detected: ${found.join(', ')} fields`
+        : 'Could not detect form fields — enter selectors manually';
+      status.style.color = found.length > 0 ? 'hsl(145,55%,55%)' : 'hsl(40,75%,65%)';
+    } catch (err) {
+      status.textContent = 'Detection failed: ' + err.message;
+      status.style.color = 'hsl(0,65%,65%)';
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Auto-detect selectors';
   },
 
   async saveTarget(e) {

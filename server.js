@@ -110,6 +110,76 @@ app.delete('/api/targets/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ========== AUTO-DETECT LOGIN FORM ==========
+
+app.post('/api/detect-login', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'url required' });
+
+  try {
+    const { chromium } = require('@playwright/test');
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ ignoreHTTPSErrors: true });
+
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 20000 });
+    await page.waitForTimeout(1500);
+
+    const selectors = await page.evaluate(() => {
+      const result = { username_selector: '', password_selector: '', submit_selector: '' };
+
+      // Find password field
+      const pwdInput = document.querySelector('input[type="password"]');
+      if (pwdInput) {
+        if (pwdInput.id) result.password_selector = `#${pwdInput.id}`;
+        else if (pwdInput.name) result.password_selector = `input[name="${pwdInput.name}"]`;
+        else result.password_selector = 'input[type="password"]';
+      }
+
+      // Find username/email field — the text/email input closest to (before) the password field
+      const candidates = Array.from(document.querySelectorAll(
+        'input[type="email"], input[type="text"], input:not([type])'
+      )).filter(el => el.offsetParent !== null && el !== pwdInput);
+
+      // Prefer email type, then one with email/user in name/placeholder, then first visible
+      const emailInput = candidates.find(el => el.type === 'email')
+        || candidates.find(el => /email|user|login|account/i.test((el.name || '') + (el.placeholder || '')))
+        || candidates[0];
+
+      if (emailInput) {
+        if (emailInput.id) result.username_selector = `#${emailInput.id}`;
+        else if (emailInput.name) result.username_selector = `input[name="${emailInput.name}"]`;
+        else if (emailInput.type === 'email') result.username_selector = 'input[type="email"]';
+        else result.username_selector = 'input[type="text"]';
+      }
+
+      // Find submit button
+      const form = (pwdInput || emailInput)?.closest('form');
+      const submitBtn = form?.querySelector('button[type="submit"], input[type="submit"]')
+        || form?.querySelector('button')
+        || document.querySelector('button[type="submit"]');
+
+      if (submitBtn) {
+        if (submitBtn.id) result.submit_selector = `#${submitBtn.id}`;
+        else if (submitBtn.type === 'submit' && submitBtn.tagName === 'INPUT') result.submit_selector = 'input[type="submit"]';
+        else {
+          const text = (submitBtn.textContent || '').trim();
+          if (text) result.submit_selector = `button:has-text("${text.substring(0, 30)}")`;
+          else result.submit_selector = 'button[type="submit"]';
+        }
+      }
+
+      return result;
+    });
+
+    await browser.close();
+    console.log(`[Detect] ${url} → username: ${selectors.username_selector}, password: ${selectors.password_selector}, submit: ${selectors.submit_selector}`);
+    res.json(selectors);
+  } catch (err) {
+    console.error('[Detect] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ========== SCANS (Discovery) ==========
 
 app.get('/api/targets/:id/scans', async (req, res) => {
