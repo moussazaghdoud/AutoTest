@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoTest — Web Application Testing</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="sidebar-header">
+        <h1>AutoTest</h1>
+        <span class="version">v2.0</span>
+      </div>
+      <ul class="nav-links">
+        <li><a href="#targets" class="nav-link active" data-view="targets">Targets</a></li>
+        <li><a href="#discovery" class="nav-link" data-view="discovery">Discovery</a></li>
+        <li><a href="#runner" class="nav-link" data-view="runner">Test Runner</a></li>
+        <li><a href="#history" class="nav-link" data-view="history">History</a></li>
+      </ul>
+      <div class="sidebar-footer">
+        <span style="font-size:12px;color:var(--text-secondary)">Powered by Playwright</span>
+      </div>
+    </nav>
+
+    <main class="content">
+      <!-- TARGETS VIEW -->
+      <section id="view-targets" class="view active">
+        <div class="view-header">
+          <h2>Targets</h2>
+          <button class="btn btn-primary" id="addTargetBtn">+ Add Target</button>
+        </div>
+        <div id="targetsList" class="card-grid"></div>
+      </section>
+
+      <!-- DISCOVERY VIEW -->
+      <section id="view-discovery" class="view">
+        <div class="view-header">
+          <h2>Discovery</h2>
+          <div class="view-actions">
+            <select id="discoveryTargetSelect" class="select"></select>
+            <button class="btn btn-primary" id="startScanBtn">Start Scan</button>
+          </div>
+        </div>
+        <div id="scanProgress" class="progress-area" style="display:none">
+          <div class="progress-bar"><div class="progress-fill" id="scanProgressFill"></div></div>
+          <p id="scanProgressText">Starting scan...</p>
+        </div>
+        <div id="scanResults" style="display:none">
+          <div class="tabs">
+            <button class="tab active" data-tab="pages">Pages</button>
+            <button class="tab" data-tab="apis">APIs</button>
+            <button class="tab" data-tab="forms">Forms</button>
+          </div>
+          <div id="tab-pages" class="tab-content active"></div>
+          <div id="tab-apis" class="tab-content"></div>
+          <div id="tab-forms" class="tab-content"></div>
+        </div>
+      </section>
+
+      <!-- TEST RUNNER VIEW -->
+      <section id="view-runner" class="view">
+        <div class="view-header">
+          <h2>Test Runner</h2>
+        </div>
+        <div class="runner-config">
+          <div class="form-group">
+            <label>Target</label>
+            <select id="runnerTargetSelect" class="select"></select>
+          </div>
+          <div class="form-group">
+            <label>Scan</label>
+            <select id="runnerScanSelect" class="select"></select>
+          </div>
+          <div class="form-group">
+            <label>Test Types</label>
+            <div class="checkbox-group" id="testTypeCheckboxes">
+              <label><input type="checkbox" value="pages" checked> Pages</label>
+              <label><input type="checkbox" value="apis" checked> APIs</label>
+              <label><input type="checkbox" value="security"> Security</label>
+              <label><input type="checkbox" value="forms"> Forms</label>
+              <label><input type="checkbox" value="load"> Load</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Concurrency: <span id="concurrencyValue">3</span></label>
+            <input type="range" id="concurrencySlider" min="1" max="10" value="3">
+          </div>
+          <div class="form-group" style="margin-top:8px">
+            <label for="aiPromptInput">AI Test Prompt <span style="font-weight:400;color:var(--text-secondary)">(optional)</span></label>
+            <textarea id="aiPromptInput" class="select" rows="3" placeholder="e.g. Test the login flow with wrong password, verify all API endpoints return JSON, check that the cart works end-to-end..." style="resize:vertical;font-family:inherit"></textarea>
+            <p style="font-size:11px;color:var(--text-secondary);margin-top:4px">Describe what you want to test. OpenAI will generate a custom Playwright spec and include it in the run.</p>
+          </div>
+          <button class="btn btn-primary" id="startRunBtn">Run Tests</button>
+        </div>
+        <div id="runProgress" style="display:none"></div>
+        <div id="runResults" style="display:none"></div>
+      </section>
+
+      <!-- HISTORY VIEW -->
+      <section id="view-history" class="view">
+        <div class="view-header">
+          <h2>History</h2>
+          <select id="historyTargetSelect" class="select"></select>
+        </div>
+        <div class="charts-row">
+          <div class="chart-container">
+            <canvas id="trendChart"></canvas>
+          </div>
+          <div class="chart-container">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+        <div id="runHistoryTable"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- MODAL -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal" id="targetModal">
+      <div class="modal-header">
+        <h3 id="modalTitle">Add Target</h3>
+        <button class="modal-close" id="modalClose">&times;</button>
+      </div>
+      <form id="targetForm">
+        <input type="hidden" id="targetId">
+        <div class="form-group">
+          <label for="targetName">Name</label>
+          <input type="text" id="targetName" required placeholder="My Application">
+        </div>
+        <div class="form-group">
+          <label for="targetUrl">Base URL</label>
+          <input type="url" id="targetUrl" required placeholder="https://example.com">
+        </div>
+        <div class="form-group">
+          <label for="targetAuthType">Auth Type</label>
+          <select id="targetAuthType" class="select">
+            <option value="none">None</option>
+            <option value="form">Login Form</option>
+            <option value="basic">Basic Auth</option>
+            <option value="bearer">Bearer Token</option>
+            <option value="cookie">Cookie</option>
+          </select>
+        </div>
+        <div id="authConfigFields"></div>
+        <div class="form-actions">
+          <button type="button" class="btn" id="modalCancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/components.js"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/discovery.js"></script>
+  <script src="/js/runner.js"></script>
+  <script src="/js/history.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

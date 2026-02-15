@@ -1,29 +1,18 @@
 const { defineConfig } = require('@playwright/test');
-const config = require('./config');
 
 module.exports = defineConfig({
-  testDir: './tests',
+  testDir: './generated-tests',
   timeout: 60000,
-  expect: { timeout: 10000 },
-  fullyParallel: true,
   retries: 0,
-  workers: 4,
+  workers: 2,
   reporter: [
+    ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'test-results/results.json' }],
     ['list'],
-    ['html', { outputFolder: 'reports/playwright-report', open: 'never' }],
-    ['json', { outputFile: 'reports/results.json' }],
   ],
   use: {
-    baseURL: config.BASE_URL,
+    headless: true,
+    ignoreHTTPSErrors: true,
     screenshot: 'only-on-failure',
-    trace: 'retain-on-failure',
-    actionTimeout: config.TIMEOUTS.api,
-    navigationTimeout: config.TIMEOUTS.navigation,
+    trace: 'off',
   },
-  projects: [
-    {
-      name: 'chromium',
-      use: { browserName: 'chromium' },
-    },
-  ],
 });

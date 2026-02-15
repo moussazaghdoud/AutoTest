@@ -1,19 +1,17 @@
 {
-  "name": "autotest-rainbow-portal",
-  "version": "1.0.0",
-  "description": "Automated testing framework for Rainbow Portal",
+  "name": "autotest",
+  "version": "2.0.0",
+  "description": "Generic web application testing framework with auto-discovery",
+  "main": "server.js",
   "scripts": {
-    "test": "node run-tests.js --suite all",
-    "test:public": "node run-tests.js --suite public",
-    "test:auth": "node run-tests.js --suite auth",
-    "test:client": "node run-tests.js --suite client",
-    "test:admin": "node run-tests.js --suite admin",
-    "test:security": "node run-tests.js --suite security",
-    "test:load": "node run-tests.js --suite load"
+    "start": "node server.js",
+    "test": "npx playwright test"
   },
   "dependencies": {
     "@playwright/test": "^1.49.0",
-    "commander": "^12.1.0",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "express": "^4.21.0",
+    "openai": "^6.22.0",
+    "sql.js": "^1.11.0"
   }
 }
