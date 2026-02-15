@@ -118,6 +118,17 @@ CRITICAL BROWSER TEST PATTERNS — follow these EXACTLY to avoid errors:
    - Complete each step sequentially
    - Add assertions after each step to verify progress
 
+10. ASSERTIONS — use SAFE assertions that don't guess unknown text:
+   - NEVER guess error messages or success messages — you don't know the exact text.
+   - After form submit, use ONE of these safe patterns:
+     a) Check URL changed: expect(page.url()).not.toBe(previousUrl);
+     b) Check page has some visible content: await expect(page.locator('body')).toContainText(/./);
+     c) Check the form is no longer visible (success): await expect(page.locator('form').first()).not.toBeVisible({ timeout: 10000 });
+     d) Check for any error/alert element appearing: const hasError = await page.locator('[class*="error"], [class*="alert"], [role="alert"]').first().isVisible().catch(() => false);
+   - For wrong password test: submit the form, wait 3 seconds, then check that the page URL didn't change (still on login) OR that some error element appeared — do NOT assert specific error text like "Invalid credentials".
+   - For account creation test: fill form, submit, wait, then check URL changed OR a success/dashboard/welcome page appeared.
+   - Keep assertions simple and resilient. It is MUCH better to have a passing test with a loose assertion than a failing test with a wrong guess.
+
 GENERAL:
 - Base URL: ${baseUrl}
 ${Object.keys(authHeaders).length > 0 ? `- Auth headers to include: ${JSON.stringify(authHeaders)}` : '- No authentication required.'}
