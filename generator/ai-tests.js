@@ -56,10 +56,11 @@ FIELD MATCHING:
 IMPORTANT:
 - ONLY use button text, link text, and field names that appear in the page descriptions below.
 - Do NOT invent or guess element text that is not listed.
-- Keep tests simple: 3-8 steps each.
+- Keep tests simple: 3-6 steps each.
 - Generate 2-5 tests depending on scope.
-- For login with wrong password: fill form, submit, then assert_url_not_changed or assert_element_exists with ".error" or "[role=alert]".
-- For account creation: fill all visible fields, submit, assert URL changed or form disappeared.
+- For login with wrong password: fill form, submit, wait 2 seconds, then assert_url_not_changed.
+- For account creation: fill all visible fields, click submit, wait 3 seconds, then ONLY assert_url_changed. Do NOT wait for a dashboard or welcome page — many sites require email confirmation after signup, so just verify the form submission went through (URL changed from the signup page).
+- Do NOT use assert_url_contains with specific paths like "/dashboard" or "/welcome" — you don't know where the site redirects. Use assert_url_changed instead.
 - Use realistic test data: test@example.com, John, Doe, Password123!, etc.
 
 Base URL: ${baseUrl}`;

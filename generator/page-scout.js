@@ -4,6 +4,8 @@ const { chromium } = require('@playwright/test');
 
 async function scoutTarget(baseUrl) {
   console.log(`[Scout] Starting live exploration of ${baseUrl}`);
+  const scoutStart = Date.now();
+  const SCOUT_TIMEOUT = 45000; // 45 second max for entire scout
   let browser;
   try {
     browser = await chromium.launch({ headless: true });
@@ -54,9 +56,10 @@ async function scoutTarget(baseUrl) {
 
     console.log(`[Scout] Found ${clickTargets.length} clickable elements to explore`);
 
-    // Step 3: Click each target and capture the resulting page
+    // Step 3: Click each target and capture the resulting page (with timeout)
     const homeUrl = page.url();
-    for (const target of clickTargets.slice(0, 20)) {
+    for (const target of clickTargets.slice(0, 12)) {
+      if (Date.now() - scoutStart > SCOUT_TIMEOUT) { console.log('[Scout] Timeout reached, stopping clicks'); break; }
       try {
         // Make sure we're on the homepage
         const currentUrl = page.url();
@@ -76,9 +79,9 @@ async function scoutTarget(baseUrl) {
         const isVisible = await locator.isVisible().catch(() => false);
         if (!isVisible) continue;
 
-        await locator.click({ timeout: 5000 });
-        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-        await page.waitForTimeout(1500);
+        await locator.click({ timeout: 3000 });
+        await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+        await page.waitForTimeout(800);
 
         const newUrl = page.url();
         // Only capture if this is a new page within the same origin
@@ -93,9 +96,10 @@ async function scoutTarget(baseUrl) {
       }
     }
 
-    // Step 4: Also try common SPA paths directly
-    const commonPaths = ['/login', '/signin', '/signup', '/register', '/pricing', '/plans', '/about', '/contact', '/dashboard'];
+    // Step 4: Also try common SPA paths directly (if time allows)
+    const commonPaths = ['/login', '/signin', '/signup', '/register', '/pricing', '/plans'];
     for (const pathSuffix of commonPaths) {
+      if (Date.now() - scoutStart > SCOUT_TIMEOUT) { console.log('[Scout] Timeout reached, stopping path probing'); break; }
       const fullUrl = baseUrl.replace(/\/$/, '') + pathSuffix;
       if (visitedUrls.has(fullUrl)) continue;
       try {
