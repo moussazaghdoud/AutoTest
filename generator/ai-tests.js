@@ -47,6 +47,7 @@ AVAILABLE ACTIONS:
   {"action": "assert_not_visible", "text": "Sign Up"}
   {"action": "assert_element_exists", "selector": ".error"}
   {"action": "assert_element_count", "selector": ".alert", "min": 1}
+  {"action": "assert_page_has_text", "pattern": "confirm|success|welcome|created|thank|check your email"}
   {"action": "api_get", "path": "/api/users", "assert_status": 200}
   {"action": "api_post", "path": "/api/login", "body": {"email": "x", "password": "y"}, "assert_status": 401}
 
@@ -59,8 +60,9 @@ IMPORTANT:
 - Keep tests simple: 3-6 steps each.
 - Generate 2-5 tests depending on scope.
 - For login with wrong password: fill form, submit, wait 2 seconds, then assert_url_not_changed.
-- For account creation: fill all visible fields, click submit, wait 3 seconds, then ONLY assert_url_changed. Do NOT wait for a dashboard or welcome page — many sites require email confirmation after signup, so just verify the form submission went through (URL changed from the signup page).
-- Do NOT use assert_url_contains with specific paths like "/dashboard" or "/welcome" — you don't know where the site redirects. Use assert_url_changed instead.
+- For account creation: fill all visible fields, click submit, wait 3 seconds, then use assert_page_has_text with pattern "confirm|success|welcome|created|thank|check your email" to verify the submission worked. Many sites require email confirmation, so just verify a success/confirmation message appeared. Also add assert_url_changed as a second check.
+- Do NOT use assert_url_contains with specific paths like "/dashboard" or "/welcome" — you don't know where the site redirects.
+- For Salesforce lead verification: use an api_get or api_post to check if the lead exists in Salesforce after account creation.
 - Use realistic test data: test@example.com, John, Doe, Password123!, etc.
 
 Base URL: ${baseUrl}`;
@@ -215,6 +217,16 @@ function planToPlaywright(tests, baseUrl, authHeaders) {
         case 'assert_not_visible':
           lines.push(`      await expect(page.getByText('${esc(step.text)}').first()).not.toBeVisible({ timeout: 5000 });`);
           break;
+
+        case 'assert_page_has_text': {
+          const pattern = esc(step.pattern || 'confirm|success|welcome|created|thank');
+          lines.push(`      {`);
+          lines.push(`        const body = await page.locator('body').innerText();`);
+          lines.push(`        const pattern = new RegExp('${pattern}', 'i');`);
+          lines.push(`        expect(body).toMatch(pattern);`);
+          lines.push(`      }`);
+          break;
+        }
 
         case 'assert_element_exists':
           lines.push(`      await expect(page.locator('${esc(step.selector)}').first()).toBeVisible({ timeout: 10000 });`);
