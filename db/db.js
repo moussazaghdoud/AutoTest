@@ -37,6 +37,7 @@ async function getDb() {
     }
     // Migrations for existing databases
     try { db.run('ALTER TABLE test_runs ADD COLUMN ai_prompt TEXT'); } catch { /* already exists */ }
+    try { db.run('ALTER TABLE discovered_pages ADD COLUMN ui_elements TEXT DEFAULT \'{}\''); } catch { /* already exists */ }
 
     saveDb();
 

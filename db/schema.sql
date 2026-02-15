@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS discovered_pages (
   response_time INTEGER,
   has_forms INTEGER DEFAULT 0,
   is_auth_page INTEGER DEFAULT 0,
+  ui_elements TEXT DEFAULT '{}',
   created_at TEXT DEFAULT (datetime('now'))
 );
 

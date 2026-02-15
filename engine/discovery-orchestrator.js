@@ -82,9 +82,9 @@ async function runDiscovery(scanId, target, emitSse) {
     // Store in DB
     for (const p of pages) {
       run(db,
-        `INSERT INTO discovered_pages (scan_id, url, title, status_code, response_time, has_forms, is_auth_page)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [scanId, p.url, p.title, p.status_code, p.response_time, p.has_forms, p.is_auth_page || 0]
+        `INSERT INTO discovered_pages (scan_id, url, title, status_code, response_time, has_forms, is_auth_page, ui_elements)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [scanId, p.url, p.title, p.status_code, p.response_time, p.has_forms, p.is_auth_page || 0, JSON.stringify(p.ui_elements || {})]
       );
       emitSse('scan', scanId, 'page', { url: p.url, status: p.status_code });
     }
