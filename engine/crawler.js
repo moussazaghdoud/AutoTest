@@ -1,4 +1,5 @@
 // BFS page crawler (depth=3, max=100) — captures UI elements for AI context
+// Supports SPAs: clicks navigation elements to discover client-side routes
 
 async function crawlPages(page, baseUrl, maxDepth = 3, maxPages = 100) {
   const visited = new Set();
@@ -8,8 +9,10 @@ async function crawlPages(page, baseUrl, maxDepth = 3, maxPages = 100) {
 
   while (queue.length > 0 && results.length < maxPages) {
     const { url, depth } = queue.shift();
-    if (visited.has(url) || depth > maxDepth) continue;
+    const normalizedForVisit = url.replace(/#.*$/, ''); // track without hash for dedup of non-hash URLs
+    if (visited.has(url) || visited.has(normalizedForVisit)) continue;
     visited.add(url);
+    visited.add(normalizedForVisit);
 
     try {
       const start = Date.now();
@@ -18,7 +21,7 @@ async function crawlPages(page, baseUrl, maxDepth = 3, maxPages = 100) {
       const status = response ? response.status() : 0;
 
       // Wait for JS frameworks to render dynamic content (SPA support)
-      await page.waitForTimeout(800);
+      await page.waitForTimeout(1200);
 
       // Get title
       const title = await page.title().catch(() => '');
@@ -29,7 +32,7 @@ async function crawlPages(page, baseUrl, maxDepth = 3, maxPages = 100) {
       // Capture UI elements for AI context
       const uiElements = await captureUiElements(page).catch(() => ({}));
       if (uiElements.buttons?.length || uiElements.inputs?.length) {
-        console.log(`[Crawler] ${url} — ${uiElements.buttons?.length || 0} buttons, ${uiElements.inputs?.length || 0} inputs, ${uiElements.links?.length || 0} links`);
+        console.log(`[Crawler] ${url} — ${uiElements.buttons?.length || 0} buttons, ${uiElements.inputs?.length || 0} inputs, ${uiElements.links?.length || 0} links, ${uiElements.headings?.length || 0} headings`);
       }
 
       results.push({
@@ -43,10 +46,18 @@ async function crawlPages(page, baseUrl, maxDepth = 3, maxPages = 100) {
 
       // Extract links for BFS
       if (depth < maxDepth) {
+        // 1. Traditional <a href> links
         const links = await page.$$eval('a[href]', (anchors, origin) => {
           return anchors
             .map(a => {
-              try { return new URL(a.href, origin).href; } catch { return null; }
+              try {
+                const href = a.getAttribute('href') || '';
+                // Keep hash routes like #/signup, #!/page, etc.
+                if (href.startsWith('#') && href.length > 1) {
+                  return origin + '/' + href;
+                }
+                return new URL(a.href, origin).href;
+              } catch { return null; }
             })
             .filter(href => href && href.startsWith(origin));
         }, baseOrigin).catch(() => []);
@@ -57,8 +68,20 @@ async function crawlPages(page, baseUrl, maxDepth = 3, maxPages = 100) {
             queue.push({ url: normalized, depth: depth + 1 });
           }
         }
+
+        // 2. SPA route discovery: click navigation elements and capture route changes
+        if (depth === 0) {
+          const spaRoutes = await discoverSpaRoutes(page, baseUrl, baseOrigin).catch(() => []);
+          console.log(`[Crawler] SPA route discovery found ${spaRoutes.length} additional routes`);
+          for (const route of spaRoutes) {
+            if (!visited.has(route) && route.startsWith(baseOrigin)) {
+              queue.push({ url: route, depth: depth + 1 });
+            }
+          }
+        }
       }
     } catch (err) {
+      console.log(`[Crawler] Error on ${url}: ${err.message}`);
       results.push({
         url,
         title: '',
@@ -72,6 +95,102 @@ async function crawlPages(page, baseUrl, maxDepth = 3, maxPages = 100) {
   }
 
   return results;
+}
+
+// Click on nav buttons/links to discover SPA routes that don't use <a href>
+async function discoverSpaRoutes(page, baseUrl, baseOrigin) {
+  const discoveredRoutes = new Set();
+  const startUrl = page.url();
+
+  try {
+    // Find all clickable navigation elements (nav links, buttons in header/nav, etc.)
+    const clickTargets = await page.evaluate(() => {
+      const targets = [];
+
+      // Links and buttons inside nav, header, or with navigation-like roles
+      const navSelectors = [
+        'nav a', 'nav button',
+        'header a', 'header button',
+        '[role="navigation"] a', '[role="navigation"] button',
+        '.navbar a', '.nav a', '.menu a', '.sidebar a',
+        '.nav-link', '.menu-item', '.nav-item a',
+      ];
+
+      const seen = new Set();
+      for (const selector of navSelectors) {
+        for (const el of document.querySelectorAll(selector)) {
+          const text = (el.textContent || '').trim().substring(0, 50);
+          const tag = el.tagName.toLowerCase();
+          const href = el.getAttribute('href') || '';
+          // Skip empty, anchor-only, or already-seen
+          if (!text || seen.has(text)) continue;
+          if (href === '#' || href === '' || href === 'javascript:void(0)') {
+            // These are likely SPA navigation — worth clicking
+            seen.add(text);
+            targets.push({ text, tag, index: targets.length });
+          }
+        }
+      }
+
+      // Also get standalone buttons/links that look like navigation (CTA buttons, etc.)
+      const ctaSelectors = [
+        'a.btn', 'a.button', 'button.cta',
+        '[class*="get-started"]', '[class*="sign-up"]', '[class*="signup"]',
+        '[class*="register"]', '[class*="login"]', '[class*="pricing"]',
+      ];
+      for (const selector of ctaSelectors) {
+        for (const el of document.querySelectorAll(selector)) {
+          const text = (el.textContent || '').trim().substring(0, 50);
+          if (!text || seen.has(text)) continue;
+          seen.add(text);
+          targets.push({ text, tag: el.tagName.toLowerCase(), index: targets.length });
+        }
+      }
+
+      return targets;
+    });
+
+    console.log(`[Crawler] Found ${clickTargets.length} navigation targets to click`);
+
+    // Click each target and see if the URL changes
+    for (const target of clickTargets.slice(0, 15)) {
+      try {
+        // Navigate back to starting page first
+        if (page.url() !== startUrl) {
+          await page.goto(startUrl, { waitUntil: 'networkidle', timeout: 15000 });
+          await page.waitForTimeout(500);
+        }
+
+        // Try to find and click the element by its text
+        const el = target.tag === 'a'
+          ? page.getByRole('link', { name: target.text }).first()
+          : page.getByRole('button', { name: target.text }).first();
+
+        const isVisible = await el.isVisible().catch(() => false);
+        if (!isVisible) continue;
+
+        await el.click({ timeout: 5000 });
+        await page.waitForTimeout(1500); // Wait for SPA route change
+
+        const newUrl = page.url();
+        if (newUrl !== startUrl && newUrl.startsWith(baseOrigin)) {
+          discoveredRoutes.add(normalizeUrl(newUrl));
+          console.log(`[Crawler] SPA click "${target.text}" → ${newUrl}`);
+        }
+      } catch {
+        // Skip click errors
+      }
+    }
+
+    // Go back to start
+    if (page.url() !== startUrl) {
+      await page.goto(startUrl, { waitUntil: 'networkidle', timeout: 15000 }).catch(() => {});
+    }
+  } catch (err) {
+    console.log(`[Crawler] SPA discovery error: ${err.message}`);
+  }
+
+  return Array.from(discoveredRoutes);
 }
 
 async function captureUiElements(page) {
@@ -135,7 +254,10 @@ async function captureUiElements(page) {
 function normalizeUrl(url) {
   try {
     const u = new URL(url);
-    u.hash = '';
+    // Keep hash routes (e.g. #/signup) but strip empty hashes
+    if (u.hash === '#' || u.hash === '') {
+      u.hash = '';
+    }
     // Remove trailing slash for consistency (except root)
     if (u.pathname !== '/' && u.pathname.endsWith('/')) {
       u.pathname = u.pathname.slice(0, -1);
