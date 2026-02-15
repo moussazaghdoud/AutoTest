@@ -167,12 +167,12 @@ app.post('/api/targets/:id/run', async (req, res) => {
   const target = get(db, 'SELECT * FROM targets WHERE id = ?', [req.params.id]);
   if (!target) return res.status(404).json({ error: 'Target not found' });
 
-  const { scan_id, test_types, concurrency, ai_prompt } = req.body;
+  const { scan_id, test_types, concurrency, ai_prompt, ai_only } = req.body;
   if (!scan_id) return res.status(400).json({ error: 'scan_id required' });
 
   const result = run(db,
-    `INSERT INTO test_runs (target_id, scan_id, test_types, status, started_at) VALUES (?, ?, ?, 'running', datetime('now'))`,
-    [req.params.id, scan_id, JSON.stringify(test_types || ['pages', 'apis'])]
+    `INSERT INTO test_runs (target_id, scan_id, test_types, ai_prompt, status, started_at) VALUES (?, ?, ?, ?, 'running', datetime('now'))`,
+    [req.params.id, scan_id, JSON.stringify(test_types || ['pages', 'apis']), ai_prompt || null]
   );
   const runId = result.lastInsertRowid;
 
@@ -185,7 +185,7 @@ app.post('/api/targets/:id/run', async (req, res) => {
     const { collectResults } = require('./runner/result-collector');
 
     console.log(`[Run #${runId}] Generating tests for scan ${scan_id}, types: ${JSON.stringify(test_types)}, concurrency: ${concurrency}`);
-    const generated = await generateTests(runId, scan_id, target, test_types || ['pages', 'apis'], concurrency, ai_prompt);
+    const generated = await generateTests(runId, scan_id, target, test_types || ['pages', 'apis'], concurrency, ai_prompt, ai_only);
     console.log(`[Run #${runId}] Generated: ${JSON.stringify(generated)}`);
 
     if (!generated || generated.length === 0) {
@@ -284,7 +284,7 @@ app.get('/api/runs/:id/results', async (req, res) => {
 app.get('/api/targets/:id/trends', async (req, res) => {
   const db = await getDb();
   const runs = all(db,
-    `SELECT id, status, summary, started_at, finished_at, test_types
+    `SELECT id, status, summary, started_at, finished_at, test_types, ai_prompt
      FROM test_runs WHERE target_id = ? AND status = 'done' ORDER BY started_at ASC`,
     [req.params.id]
   );
@@ -299,6 +299,7 @@ app.get('/api/targets/:id/trends', async (req, res) => {
       failed: summary.failed || 0,
       skipped: summary.skipped || 0,
       pass_rate: summary.total ? Math.round((summary.passed / summary.total) * 100) : 0,
+      ai_prompt: r.ai_prompt || null,
     };
   });
   res.json(trends);

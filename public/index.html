@@ -93,8 +93,14 @@
           </div>
           <div class="form-group" style="margin-top:8px">
             <label for="aiPromptInput">AI Test Prompt <span style="font-weight:400;color:var(--text-secondary)">(optional)</span></label>
-            <textarea id="aiPromptInput" class="select" rows="3" placeholder="e.g. Test the login flow with wrong password, verify all API endpoints return JSON, check that the cart works end-to-end..." style="resize:vertical;font-family:inherit"></textarea>
-            <p style="font-size:11px;color:var(--text-secondary);margin-top:4px">Describe what you want to test. OpenAI will generate a custom Playwright spec and include it in the run.</p>
+            <textarea id="aiPromptInput" class="select" rows="3" placeholder="e.g. Test account creation on the marketplace, verify Salesforce lead is created, check the login flow with wrong password..." style="resize:vertical;font-family:inherit"></textarea>
+            <div style="margin-top:6px">
+              <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;color:var(--text)">
+                <input type="checkbox" id="aiOnlyToggle">
+                <strong>AI Only</strong> <span style="color:var(--text-secondary);font-weight:400">— run only the AI-generated tests, skip standard test types</span>
+              </label>
+            </div>
+            <p style="font-size:11px;color:var(--text-secondary);margin-top:4px">Describe what you want to test. OpenAI will generate a custom Playwright spec. The prompt is saved with the run.</p>
           </div>
           <button class="btn btn-primary" id="startRunBtn">Run Tests</button>
         </div>

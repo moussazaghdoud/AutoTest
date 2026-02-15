@@ -142,9 +142,12 @@ const History = {
     document.getElementById('runHistoryTable').innerHTML = Components.table([
       { label: 'Run', key: 'run_id', render: r => `#${r.run_id}` },
       { label: 'Date', key: 'date', render: r => new Date(r.date).toLocaleString() },
+      { label: 'AI Prompt', key: 'ai_prompt', render: r => r.ai_prompt
+        ? `<span title="${Components.escHtml(r.ai_prompt)}" style="cursor:help;max-width:180px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Components.escHtml(r.ai_prompt)}</span>`
+        : '<span style="color:var(--text-secondary)">—</span>' },
       { label: 'Total', key: 'total' },
-      { label: 'Passed', key: 'passed', render: r => `<span style="color:#27ae60;font-weight:600">${r.passed}</span>` },
-      { label: 'Failed', key: 'failed', render: r => `<span style="color:#e74c3c;font-weight:600">${r.failed}</span>` },
+      { label: 'Passed', key: 'passed', render: r => `<span style="color:hsl(145,55%,55%);font-weight:600">${r.passed}</span>` },
+      { label: 'Failed', key: 'failed', render: r => `<span style="color:hsl(0,65%,65%);font-weight:600">${r.failed}</span>` },
       { label: 'Pass Rate', key: 'pass_rate', render: r => Components.badge(r.pass_rate + '%', r.pass_rate >= 80 ? 'success' : r.pass_rate >= 50 ? 'warning' : 'danger') },
       { label: 'Report', key: 'run_id', render: r => `<a href="/api/runs/${r.run_id}/report" class="btn btn-sm" target="_blank">Export</a>` },
     ], trends.reverse());

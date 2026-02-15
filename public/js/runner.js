@@ -18,6 +18,16 @@ const Runner = {
       document.getElementById('concurrencyValue').textContent = e.target.value;
     });
     document.getElementById('runnerTargetSelect').addEventListener('change', () => this.loadScansForTarget());
+
+    // AI Only toggle — disable/enable standard test type checkboxes
+    document.getElementById('aiOnlyToggle').addEventListener('change', (e) => {
+      const checkboxes = document.querySelectorAll('#testTypeCheckboxes input');
+      for (const cb of checkboxes) {
+        cb.disabled = e.target.checked;
+        if (e.target.checked) cb.parentElement.style.opacity = '0.4';
+        else cb.parentElement.style.opacity = '1';
+      }
+    });
   },
 
   async loadTargetSelect() {
@@ -88,9 +98,12 @@ const Runner = {
 
     const concurrency = parseInt(document.getElementById('concurrencySlider').value);
     const ai_prompt = document.getElementById('aiPromptInput').value.trim();
+    const ai_only = document.getElementById('aiOnlyToggle').checked;
+
+    if (ai_only && !ai_prompt) return alert('Enter an AI prompt when using AI Only mode');
 
     this.resetLiveState();
-    this.selectedTestTypes = ai_prompt ? [...test_types, 'custom'] : test_types;
+    this.selectedTestTypes = ai_only ? ['custom'] : (ai_prompt ? [...test_types, 'custom'] : test_types);
     document.getElementById('runProgress').style.display = 'block';
     document.getElementById('runResults').style.display = 'none';
     document.getElementById('startRunBtn').disabled = true;
@@ -102,6 +115,7 @@ const Runner = {
     try {
       const body = { scan_id: scanId, test_types, concurrency };
       if (ai_prompt) body.ai_prompt = ai_prompt;
+      if (ai_only) body.ai_only = true;
       const { run_id } = await API.post(`/api/targets/${targetId}/run`, body);
       this.listenToRun(run_id);
     } catch (err) {
@@ -471,6 +485,14 @@ const Runner = {
       { label: 'Failed', value: summary.failed || 0, color: 'hsl(0, 65%, 65%)' },
       { label: 'Skipped', value: summary.skipped || 0, color: 'hsl(40, 75%, 65%)' },
     ]);
+
+    // Show AI prompt if one was used
+    if (run.ai_prompt) {
+      html += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:16px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);font-weight:600;margin-bottom:4px">AI Prompt</div>
+        <div style="font-size:13px;color:var(--text);white-space:pre-wrap">${Components.escHtml(run.ai_prompt)}</div>
+      </div>`;
+    }
 
     html += `<div style="margin-bottom:12px"><a href="/api/runs/${runId}/report" class="btn btn-sm" target="_blank">Download Report</a></div>`;
 

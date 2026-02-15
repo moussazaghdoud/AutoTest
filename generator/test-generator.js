@@ -11,7 +11,7 @@ const { generateAiTests } = require('./ai-tests');
 
 const OUTPUT_DIR = path.join(__dirname, '..', 'generated-tests');
 
-async function generateTests(runId, scanId, target, testTypes, concurrency = 3, aiPrompt = null) {
+async function generateTests(runId, scanId, target, testTypes, concurrency = 3, aiPrompt = null, aiOnly = false) {
   const db = await getDb();
 
   // Clean output dir
@@ -37,7 +37,12 @@ async function generateTests(runId, scanId, target, testTypes, concurrency = 3, 
 
   const generated = [];
 
-  if (testTypes.includes('pages') && pages.length > 0) {
+  // When aiOnly, skip all standard test generation — only AI tests below
+  if (aiOnly) {
+    console.log(`[Run #${runId}] AI-only mode — skipping standard test generation`);
+  }
+
+  if (!aiOnly && testTypes.includes('pages') && pages.length > 0) {
     const code = generatePageTests(pages, baseUrl);
     if (code) {
       fs.writeFileSync(path.join(OUTPUT_DIR, 'pages.spec.js'), code);
@@ -45,7 +50,7 @@ async function generateTests(runId, scanId, target, testTypes, concurrency = 3, 
     }
   }
 
-  if (testTypes.includes('apis') && apis.length > 0) {
+  if (!aiOnly && testTypes.includes('apis') && apis.length > 0) {
     const code = generateApiTests(apis, baseUrl, authHeaders);
     if (code) {
       fs.writeFileSync(path.join(OUTPUT_DIR, 'apis.spec.js'), code);
@@ -53,7 +58,7 @@ async function generateTests(runId, scanId, target, testTypes, concurrency = 3, 
     }
   }
 
-  if (testTypes.includes('security')) {
+  if (!aiOnly && testTypes.includes('security')) {
     const code = generateSecurityTests(pages, apis, baseUrl);
     if (code) {
       fs.writeFileSync(path.join(OUTPUT_DIR, 'security.spec.js'), code);
@@ -61,7 +66,7 @@ async function generateTests(runId, scanId, target, testTypes, concurrency = 3, 
     }
   }
 
-  if (testTypes.includes('forms') && forms.length > 0) {
+  if (!aiOnly && testTypes.includes('forms') && forms.length > 0) {
     const code = generateFormTests(forms, baseUrl);
     if (code) {
       fs.writeFileSync(path.join(OUTPUT_DIR, 'forms.spec.js'), code);
@@ -69,7 +74,7 @@ async function generateTests(runId, scanId, target, testTypes, concurrency = 3, 
     }
   }
 
-  if (testTypes.includes('load')) {
+  if (!aiOnly && testTypes.includes('load')) {
     const code = generateLoadTests(pages, apis, baseUrl, concurrency);
     if (code) {
       fs.writeFileSync(path.join(OUTPUT_DIR, 'load.spec.js'), code);

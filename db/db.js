@@ -35,6 +35,9 @@ async function getDb() {
     for (const stmt of statements) {
       db.run(stmt + ';');
     }
+    // Migrations for existing databases
+    try { db.run('ALTER TABLE test_runs ADD COLUMN ai_prompt TEXT'); } catch { /* already exists */ }
+
     saveDb();
 
     // Auto-save periodically

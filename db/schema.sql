@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS test_runs (
   target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
   scan_id INTEGER REFERENCES scans(id),
   test_types TEXT DEFAULT '[]',
+  ai_prompt TEXT,
   status TEXT DEFAULT 'pending',
   summary TEXT DEFAULT '{}',
   started_at TEXT,
