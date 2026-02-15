@@ -18,6 +18,20 @@ async function generateAiTests(prompt, context) {
   const apiSummary = apis.slice(0, 30).map(a => `  - ${a.method} ${a.url} (status: ${a.status_code})`).join('\n');
   const formSummary = forms.slice(0, 10).map(f => `  - ${f.page_url} — ${f.form_action || 'inline'} (${f.field_count || '?'} fields)`).join('\n');
 
+  // Decide test strategy based on what was discovered
+  const hasApis = apis.length > 0;
+  const hasForms = forms.length > 0;
+  const hasPages = pages.length > 0;
+
+  let strategyHint = '';
+  if (hasApis && hasForms) {
+    strategyHint = `This target has both API endpoints and browser forms. Use API tests (request fixture) when the user asks to test backend logic, data creation, or validation. Use browser tests (page fixture) when the user asks to test UI behavior, navigation, or form interaction.`;
+  } else if (hasApis) {
+    strategyHint = `This target has API endpoints. Prefer API tests using the request fixture for speed and reliability.`;
+  } else if (hasForms || hasPages) {
+    strategyHint = `This target is primarily a website with pages and forms. Use browser tests with the page fixture.`;
+  }
+
   const systemPrompt = `You are a Playwright test engineer. Generate a complete, runnable Playwright spec file (.spec.js) based on the user's testing request.
 
 RULES:
@@ -27,17 +41,22 @@ RULES:
 - Set test.setTimeout(120000) inside describe.
 - Each test() must have a clear descriptive name.
 
-API TESTS (PREFERRED — use these whenever possible):
+STRATEGY:
+${strategyHint}
+Choose the right approach for what the user is asking. Mix API and browser tests when it makes sense.
+
+API TESTS (for backend/data/validation testing):
 - Use the \`request\` fixture: test('...', async ({ request }) => { ... })
 - Use request.post(), request.get(), request.put(), request.delete()
 - Always pass full absolute URLs: request.post('${baseUrl}/api/endpoint', { data: {...} })
 - Check response.status() and response.json() for assertions.
-- API tests are fast and reliable — ALWAYS prefer them over browser tests.
 
-BROWSER TESTS (only when testing visual/UI behavior):
+BROWSER TESTS (for UI/navigation/visual testing):
 - Use the \`page\` fixture: test('...', async ({ page }) => { ... })
 - Use page.goto('${baseUrl}/path') with full absolute URL.
-- NEVER guess CSS selectors — only use generic ones like 'form', 'input[type="email"]', 'button[type="submit"]', or text-based locators like page.getByRole(), page.getByText(), page.getByPlaceholder().
+- Use resilient locators: page.getByRole(), page.getByText(), page.getByPlaceholder(), page.getByLabel() — these work across any website.
+- Fallback selectors: 'form', 'input[type="email"]', 'button[type="submit"]', '[data-testid="..."]'.
+- NEVER guess custom class names or IDs — use text/role/placeholder locators.
 - Always add { timeout: 15000 } to waitFor/click/fill calls.
 
 GENERAL:
@@ -45,8 +64,8 @@ GENERAL:
 ${Object.keys(authHeaders).length > 0 ? `- Auth headers to include: ${JSON.stringify(authHeaders)}` : '- No authentication required.'}
 - Be practical — test what the user asked for, not more.
 - Generate between 3 and 15 tests depending on the scope of the request.
-- For account creation / registration: use the API endpoint (POST) directly, not the browser form.
-- Test both success cases AND error cases (missing fields, duplicates, invalid data).`;
+- Test both success cases AND error cases when relevant.
+- Use the discovered endpoints and pages listed below — do NOT invent URLs that are not in the list.`;
 
   const userMessage = `Here is what was discovered on the target application:
 
