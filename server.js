@@ -379,6 +379,19 @@ app.get('/api/targets/:id/trends', async (req, res) => {
   res.json(trends);
 });
 
+// ========== SCOUT SCREENSHOTS ==========
+
+app.get('/api/screenshots', (req, res) => {
+  const dir = path.join(__dirname, 'public', 'screenshots', 'latest');
+  try {
+    if (!fs.existsSync(dir)) return res.json([]);
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.png')).sort();
+    res.json(files.map(f => ({ filename: f, url: `/screenshots/latest/${f}` })));
+  } catch {
+    res.json([]);
+  }
+});
+
 // ========== REPORT EXPORT ==========
 
 app.get('/api/runs/:id/report', async (req, res) => {

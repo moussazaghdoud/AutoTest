@@ -510,5 +510,37 @@ const Runner = {
       : Components.emptyState('No results', 'Something went wrong');
 
     document.getElementById('runResults').innerHTML = html;
+
+    // Load scout screenshots
+    this.loadScreenshots();
+  },
+
+  async loadScreenshots() {
+    try {
+      const screenshots = await API.get('/api/screenshots');
+      if (!screenshots || screenshots.length === 0) return;
+
+      const container = document.getElementById('runResults');
+      let gallery = `
+        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+          <h3 style="margin-bottom:12px;font-size:15px;color:var(--text)">Scout Screenshots — What the AI Saw</h3>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">`;
+
+      for (const s of screenshots) {
+        const label = s.filename.replace(/^\d+-/, '').replace('.png', '').replace(/-/g, ' ');
+        gallery += `
+          <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)">
+            <a href="${s.url}" target="_blank" style="display:block">
+              <img src="${s.url}" alt="${Components.escHtml(label)}" style="width:100%;height:auto;display:block" loading="lazy">
+            </a>
+            <div style="padding:8px 10px;font-size:12px;color:var(--text-secondary);text-transform:capitalize">${Components.escHtml(label)}</div>
+          </div>`;
+      }
+
+      gallery += '</div></div>';
+      container.insertAdjacentHTML('beforeend', gallery);
+    } catch {
+      // Screenshots not available — skip silently
+    }
   },
 };
