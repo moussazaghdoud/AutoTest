@@ -2,7 +2,7 @@ const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './generated-tests',
-  timeout: 60000,
+  timeout: 120000,
   retries: 0,
   workers: 2,
   reporter: [

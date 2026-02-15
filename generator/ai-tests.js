@@ -24,15 +24,29 @@ RULES:
 - Output ONLY valid JavaScript code — no markdown, no explanation, no backticks.
 - Use const { test, expect } = require('@playwright/test');
 - Wrap all tests in test.describe('Custom AI Tests', () => { ... });
-- Set test.setTimeout(60000) inside describe.
+- Set test.setTimeout(120000) inside describe.
 - Each test() must have a clear descriptive name.
-- Use page.goto(), page.click(), page.fill(), expect(), request.get(), etc.
-- For API tests use the \`request\` fixture: test('...', async ({ request }) => { ... })
-- For browser tests use the \`page\` fixture: test('...', async ({ page }) => { ... })
+
+API TESTS (PREFERRED — use these whenever possible):
+- Use the \`request\` fixture: test('...', async ({ request }) => { ... })
+- Use request.post(), request.get(), request.put(), request.delete()
+- Always pass full absolute URLs: request.post('${baseUrl}/api/endpoint', { data: {...} })
+- Check response.status() and response.json() for assertions.
+- API tests are fast and reliable — ALWAYS prefer them over browser tests.
+
+BROWSER TESTS (only when testing visual/UI behavior):
+- Use the \`page\` fixture: test('...', async ({ page }) => { ... })
+- Use page.goto('${baseUrl}/path') with full absolute URL.
+- NEVER guess CSS selectors — only use generic ones like 'form', 'input[type="email"]', 'button[type="submit"]', or text-based locators like page.getByRole(), page.getByText(), page.getByPlaceholder().
+- Always add { timeout: 15000 } to waitFor/click/fill calls.
+
+GENERAL:
 - Base URL: ${baseUrl}
 ${Object.keys(authHeaders).length > 0 ? `- Auth headers to include: ${JSON.stringify(authHeaders)}` : '- No authentication required.'}
 - Be practical — test what the user asked for, not more.
-- Generate between 3 and 15 tests depending on the scope of the request.`;
+- Generate between 3 and 15 tests depending on the scope of the request.
+- For account creation / registration: use the API endpoint (POST) directly, not the browser form.
+- Test both success cases AND error cases (missing fields, duplicates, invalid data).`;
 
   const userMessage = `Here is what was discovered on the target application:
 
