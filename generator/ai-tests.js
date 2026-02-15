@@ -60,7 +60,7 @@ IMPORTANT:
 - Keep tests simple: 3-6 steps each.
 - Generate 2-5 tests depending on scope.
 - For login with wrong password: fill form, submit, wait 2 seconds, then assert_url_not_changed.
-- For account creation: fill all visible fields, click submit, wait 3 seconds, then use assert_page_has_text with pattern "confirm|success|welcome|created|thank|check your email" to verify the submission worked. Many sites require email confirmation, so just verify a success/confirmation message appeared. Also add assert_url_changed as a second check.
+- For account creation: fill all visible fields, click submit, wait 3 seconds, then ONLY use assert_url_changed. This is the most reliable check — the site will redirect to a login page, confirmation page, or dashboard after successful signup.
 - Do NOT use assert_url_contains with specific paths like "/dashboard" or "/welcome" — you don't know where the site redirects.
 - For Salesforce lead verification: use an api_get or api_post to check if the lead exists in Salesforce after account creation.
 - Use realistic test data: test@example.com, John, Doe, Password123!, etc.
@@ -125,11 +125,13 @@ function planToPlaywright(tests, baseUrl, authHeaders) {
       lines.push(`    try {`);
 
       switch (step.action) {
-        case 'goto':
-          lines.push(`      await page.goto('${baseUrl}${step.path || ''}', { waitUntil: 'networkidle', timeout: 30000 });`);
+        case 'goto': {
+          const gotoUrl = `${baseUrl.replace(/\/$/, '')}${step.path || ''}`;
+          lines.push(`      await page.goto('${gotoUrl}', { waitUntil: 'networkidle', timeout: 30000 });`);
           lines.push(`      await page.waitForTimeout(1500);`);
           lines.push(`      previousUrl = page.url();`);
           break;
+        }
 
         case 'click_link':
           lines.push(`      await page.getByRole('link', { name: '${esc(step.text)}' }).first().waitFor({ state: 'visible', timeout: 15000 });`);
