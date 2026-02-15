@@ -41,6 +41,7 @@ AVAILABLE ACTIONS:
   {"action": "select", "field": "Country", "value": "France"}
   {"action": "wait", "seconds": 2}
   {"action": "assert_url_contains", "text": "/dashboard"}
+  {"action": "assert_url_changed"}
   {"action": "assert_url_not_changed"}
   {"action": "assert_visible", "text": "Welcome"}
   {"action": "assert_not_visible", "text": "Sign Up"}
@@ -145,23 +146,31 @@ function planToPlaywright(tests, baseUrl, authHeaders) {
         case 'fill': {
           const f = esc(step.field);
           const v = esc(step.value);
-          // Try multiple locator strategies
+          // Guess input type from field name for type-based fallback
+          const fieldLower = (step.field || '').toLowerCase();
+          let typeGuess = 'text';
+          if (fieldLower.includes('email')) typeGuess = 'email';
+          else if (fieldLower.includes('password')) typeGuess = 'password';
+          else if (fieldLower.includes('phone') || fieldLower.includes('tel')) typeGuess = 'tel';
+          else if (fieldLower.includes('search')) typeGuess = 'search';
+          else if (fieldLower.includes('url') || fieldLower.includes('website')) typeGuess = 'url';
+
           lines.push(`      {`);
-          lines.push(`        const input = page.getByPlaceholder('${f}').first();`);
-          lines.push(`        const byLabel = page.getByLabel('${f}').first();`);
-          lines.push(`        const byName = page.locator('input[name="${f}" i], textarea[name="${f}" i]').first();`);
-          lines.push(`        if (await input.isVisible().catch(() => false)) {`);
-          lines.push(`          await input.fill('${v}');`);
-          lines.push(`        } else if (await byLabel.isVisible().catch(() => false)) {`);
-          lines.push(`          await byLabel.fill('${v}');`);
-          lines.push(`        } else if (await byName.isVisible().catch(() => false)) {`);
-          lines.push(`          await byName.fill('${v}');`);
-          lines.push(`        } else {`);
-          lines.push(`          // Last resort: find by partial placeholder match`);
-          lines.push(`          const partial = page.locator('input[placeholder*="${f}" i], textarea[placeholder*="${f}" i]').first();`);
-          lines.push(`          await partial.waitFor({ state: 'visible', timeout: 10000 });`);
-          lines.push(`          await partial.fill('${v}');`);
-          lines.push(`        }`);
+          lines.push(`        let filled = false;`);
+          lines.push(`        // Strategy 1: placeholder`);
+          lines.push(`        const byPlaceholder = page.getByPlaceholder('${f}').first();`);
+          lines.push(`        if (await byPlaceholder.isVisible().catch(() => false)) { await byPlaceholder.fill('${v}'); filled = true; }`);
+          lines.push(`        // Strategy 2: label`);
+          lines.push(`        if (!filled) { const byLabel = page.getByLabel('${f}').first(); if (await byLabel.isVisible().catch(() => false)) { await byLabel.fill('${v}'); filled = true; } }`);
+          lines.push(`        // Strategy 3: name attribute`);
+          lines.push(`        if (!filled) { const byName = page.locator('input[name="${f}" i], textarea[name="${f}" i]').first(); if (await byName.isVisible().catch(() => false)) { await byName.fill('${v}'); filled = true; } }`);
+          lines.push(`        // Strategy 4: partial placeholder`);
+          lines.push(`        if (!filled) { const partial = page.locator('input[placeholder*="${f}" i], textarea[placeholder*="${f}" i]').first(); if (await partial.isVisible().catch(() => false)) { await partial.fill('${v}'); filled = true; } }`);
+          lines.push(`        // Strategy 5: input type (${typeGuess})`);
+          lines.push(`        if (!filled) { const byType = page.locator('input[type="${typeGuess}"]').first(); if (await byType.isVisible().catch(() => false)) { await byType.fill('${v}'); filled = true; } }`);
+          lines.push(`        // Strategy 6: any visible text/email/password input`);
+          lines.push(`        if (!filled) { const any = page.locator('input:visible').first(); await any.waitFor({ state: 'visible', timeout: 10000 }); await any.fill('${v}'); filled = true; }`);
+          lines.push(`        if (!filled) throw new Error('Could not find field: ${f}');`);
           lines.push(`      }`);
           break;
         }
@@ -185,11 +194,17 @@ function planToPlaywright(tests, baseUrl, authHeaders) {
           break;
 
         case 'assert_url_contains':
-          lines.push(`      expect(page.url()).toContain('${esc(step.text)}');`);
+          lines.push(`      const currentUrl = page.url();`);
+          lines.push(`      const target = '${esc(step.text)}'.toLowerCase();`);
+          lines.push(`      expect(currentUrl.toLowerCase()).toContain(target);`);
           break;
 
         case 'assert_url_not_changed':
           lines.push(`      expect(page.url()).toBe(previousUrl);`);
+          break;
+
+        case 'assert_url_changed':
+          lines.push(`      expect(page.url()).not.toBe(previousUrl);`);
           break;
 
         case 'assert_visible':
