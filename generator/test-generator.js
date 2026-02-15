@@ -8,6 +8,7 @@ const { generateSecurityTests } = require('./security-tests');
 const { generateFormTests } = require('./form-tests');
 const { generateLoadTests } = require('./load-tests');
 const { generateAiTests } = require('./ai-tests');
+const { scoutTarget } = require('./page-scout');
 
 const OUTPUT_DIR = path.join(__dirname, '..', 'generated-tests');
 
@@ -24,13 +25,6 @@ async function generateTests(runId, scanId, target, testTypes, concurrency = 3, 
   const pages = all(db, 'SELECT * FROM discovered_pages WHERE scan_id = ?', [scanId]);
   const apis = all(db, 'SELECT * FROM discovered_apis WHERE scan_id = ?', [scanId]);
   const forms = all(db, 'SELECT * FROM discovered_forms WHERE scan_id = ?', [scanId]);
-
-  // Log discovery data summary for debugging
-  const pagesWithUi = pages.filter(p => {
-    const ui = typeof p.ui_elements === 'string' ? JSON.parse(p.ui_elements || '{}') : (p.ui_elements || {});
-    return ui.buttons?.length || ui.inputs?.length || ui.links?.length;
-  }).length;
-  console.log(`[Run #${runId}] Discovery data: ${pages.length} pages (${pagesWithUi} with UI elements), ${apis.length} APIs, ${forms.length} forms`);
 
   const baseUrl = target.base_url;
   const authConfig = JSON.parse(target.auth_config || '{}');
@@ -92,10 +86,19 @@ async function generateTests(runId, scanId, target, testTypes, concurrency = 3, 
   // AI-generated custom tests from user prompt
   if (aiPrompt && aiPrompt.trim()) {
     try {
+      console.log(`[Run #${runId}] Running live page scout before AI test generation...`);
+
+      // Live scout: actually visit the target and capture real UI elements
+      const scoutedPages = await scoutTarget(baseUrl);
+
+      // Use scouted pages if we got results, otherwise fall back to discovery data
+      const aiPages = scoutedPages.length > 0 ? scoutedPages : pages;
+      console.log(`[Run #${runId}] Using ${aiPages.length} pages for AI context (source: ${scoutedPages.length > 0 ? 'live scout' : 'discovery scan'})`);
+
       console.log(`[Run #${runId}] Generating AI tests from prompt: "${aiPrompt.substring(0, 80)}..."`);
       const code = await generateAiTests(aiPrompt, {
         baseUrl,
-        pages,
+        pages: aiPages,
         apis,
         forms,
         authHeaders,
@@ -107,11 +110,9 @@ async function generateTests(runId, scanId, target, testTypes, concurrency = 3, 
       }
     } catch (err) {
       console.error(`[Run #${runId}] AI test generation failed: ${err.message}`);
-      // In aiOnly mode, re-throw so the run reports the error instead of silently finishing with 0 tests
       if (aiOnly) {
         throw new Error(`AI test generation failed: ${err.message}`);
       }
-      // Otherwise continue with standard tests
     }
   }
 

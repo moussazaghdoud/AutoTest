@@ -25,6 +25,7 @@ async function generateAiTests(prompt, context) {
     if (ui.inputs && ui.inputs.length) entry += `\n    Inputs: ${ui.inputs.map(i => `[${i.type}] placeholder="${i.placeholder || ''}" label="${i.label || ''}" name="${i.name || ''}"`).join(', ')}`;
     if (ui.links && ui.links.length) entry += `\n    Links: ${ui.links.slice(0, 15).join(' | ')}`;
     if (ui.selects && ui.selects.length) entry += `\n    Selects: ${ui.selects.map(s => `"${s.label}" (${s.options.join(', ')})`).join('; ')}`;
+    if (ui.textSnippets && ui.textSnippets.length) entry += `\n    Page text: ${ui.textSnippets.join(' | ')}`;
     return entry;
   }).join('\n');
 
