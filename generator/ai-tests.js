@@ -60,9 +60,11 @@ IMPORTANT:
 - Do NOT invent or guess element text that is not listed.
 - Keep tests simple: 3-6 steps each.
 - Generate 2-5 tests depending on scope.
-- For login with wrong password: fill form, submit, wait 2 seconds, then assert_url_not_changed.
-- For account creation: fill all visible fields, click submit, wait 3 seconds, then ONLY use assert_url_changed. This is the most reliable check — the site will redirect to a login page, confirmation page, or dashboard after successful signup.
+- For login with WRONG password: fill form with fake credentials (wrong@test.com / WrongPass999), submit, wait 2 seconds, then assert_url_not_changed (still on login page = correct behavior).
+- For login with VALID credentials: fill form with real credentials if provided, submit, wait 2 seconds, then assert_url_changed (redirected away from login = success). NEVER assert_element_exists with ".error" for valid login — valid login should SUCCEED, not show errors.
+- For account creation: fill all visible fields, click submit, wait 3 seconds, then ONLY use assert_url_changed.
 - Do NOT use assert_url_contains with specific paths like "/dashboard" or "/welcome" — you don't know where the site redirects.
+- Do NOT use assert_element_exists with ".error" for success scenarios — .error is ONLY for testing that errors appear on invalid input.
 - For Salesforce lead verification: use an api_get or api_post to check if the lead exists in Salesforce after account creation.
 - Use realistic test data: test@example.com, John, Doe, Password123!, etc.
 
