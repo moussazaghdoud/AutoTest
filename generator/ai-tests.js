@@ -4,17 +4,19 @@ const OpenAI = require('openai');
 async function generateAiTests(prompt, context) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    throw new Error('OPENAI_API_KEY not set in .env');
+    throw new Error('OPENAI_API_KEY not set — add it to your environment variables');
   }
 
-  const openai = new OpenAI({ apiKey });
+  console.log('[AI Tests] Calling OpenAI with prompt:', prompt.substring(0, 80));
+
+  const openai = new OpenAI({ apiKey, timeout: 60000 });
 
   const { baseUrl, pages, apis, forms, authHeaders } = context;
 
   // Build a concise summary of what was discovered
-  const pageSummary = pages.map(p => `  - ${p.url} (status: ${p.status_code})`).join('\n');
-  const apiSummary = apis.map(a => `  - ${a.method} ${a.url} (status: ${a.status_code})`).join('\n');
-  const formSummary = forms.map(f => `  - ${f.page_url} — ${f.form_action || 'inline'} (${f.field_count || '?'} fields)`).join('\n');
+  const pageSummary = pages.slice(0, 20).map(p => `  - ${p.url} (status: ${p.status_code})`).join('\n');
+  const apiSummary = apis.slice(0, 30).map(a => `  - ${a.method} ${a.url} (status: ${a.status_code})`).join('\n');
+  const formSummary = forms.slice(0, 10).map(f => `  - ${f.page_url} — ${f.form_action || 'inline'} (${f.field_count || '?'} fields)`).join('\n');
 
   const systemPrompt = `You are a Playwright test engineer. Generate a complete, runnable Playwright spec file (.spec.js) based on the user's testing request.
 
@@ -48,15 +50,23 @@ ${prompt}
 
 Generate the Playwright spec file now.`;
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
-    ],
-    temperature: 0.3,
-    max_tokens: 4000,
-  });
+  // Race the OpenAI call against a 45-second timeout
+  const response = await Promise.race([
+    openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      temperature: 0.3,
+      max_tokens: 4000,
+    }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('OpenAI request timed out after 45s')), 45000)
+    ),
+  ]);
+
+  console.log('[AI Tests] OpenAI responded successfully');
 
   let code = response.choices[0].message.content.trim();
 

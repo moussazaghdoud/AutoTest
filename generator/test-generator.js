@@ -100,7 +100,11 @@ async function generateTests(runId, scanId, target, testTypes, concurrency = 3, 
       }
     } catch (err) {
       console.error(`[Run #${runId}] AI test generation failed: ${err.message}`);
-      // Don't block the run — continue with standard tests
+      // In aiOnly mode, re-throw so the run reports the error instead of silently finishing with 0 tests
+      if (aiOnly) {
+        throw new Error(`AI test generation failed: ${err.message}`);
+      }
+      // Otherwise continue with standard tests
     }
   }
 
