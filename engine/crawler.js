@@ -13,9 +13,12 @@ async function crawlPages(page, baseUrl, maxDepth = 3, maxPages = 100) {
 
     try {
       const start = Date.now();
-      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      const response = await page.goto(url, { waitUntil: 'networkidle', timeout: 20000 });
       const elapsed = Date.now() - start;
       const status = response ? response.status() : 0;
+
+      // Wait for JS frameworks to render dynamic content (SPA support)
+      await page.waitForTimeout(800);
 
       // Get title
       const title = await page.title().catch(() => '');
@@ -25,6 +28,9 @@ async function crawlPages(page, baseUrl, maxDepth = 3, maxPages = 100) {
 
       // Capture UI elements for AI context
       const uiElements = await captureUiElements(page).catch(() => ({}));
+      if (uiElements.buttons?.length || uiElements.inputs?.length) {
+        console.log(`[Crawler] ${url} — ${uiElements.buttons?.length || 0} buttons, ${uiElements.inputs?.length || 0} inputs, ${uiElements.links?.length || 0} links`);
+      }
 
       results.push({
         url,

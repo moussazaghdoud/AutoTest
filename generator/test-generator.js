@@ -25,6 +25,13 @@ async function generateTests(runId, scanId, target, testTypes, concurrency = 3, 
   const apis = all(db, 'SELECT * FROM discovered_apis WHERE scan_id = ?', [scanId]);
   const forms = all(db, 'SELECT * FROM discovered_forms WHERE scan_id = ?', [scanId]);
 
+  // Log discovery data summary for debugging
+  const pagesWithUi = pages.filter(p => {
+    const ui = typeof p.ui_elements === 'string' ? JSON.parse(p.ui_elements || '{}') : (p.ui_elements || {});
+    return ui.buttons?.length || ui.inputs?.length || ui.links?.length;
+  }).length;
+  console.log(`[Run #${runId}] Discovery data: ${pages.length} pages (${pagesWithUi} with UI elements), ${apis.length} APIs, ${forms.length} forms`);
+
   const baseUrl = target.base_url;
   const authConfig = JSON.parse(target.auth_config || '{}');
   const authHeaders = {};
