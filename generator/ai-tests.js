@@ -70,35 +70,43 @@ BROWSER TESTS (for UI/navigation/visual testing):
 - Use the \`page\` fixture: test('...', async ({ page }) => { ... })
 - Use page.goto('${baseUrl}/path') with full absolute URL.
 
-CRITICAL BROWSER TEST PATTERNS — follow these exactly:
+CRITICAL BROWSER TEST PATTERNS — follow these EXACTLY to avoid errors:
+
 1. ALWAYS wait for the page to fully load after navigation:
    await page.goto('${baseUrl}/path');
    await page.waitForLoadState('networkidle');
 
-2. Before interacting with ANY element, wait for it to be visible:
-   await page.getByRole('button', { name: 'Text' }).waitFor({ state: 'visible', timeout: 30000 });
-   await page.getByRole('button', { name: 'Text' }).click();
+2. STRICT MODE — ALWAYS use .first() on EVERY locator to avoid "strict mode violation" errors:
+   await page.getByRole('button', { name: 'Text' }).first().waitFor({ state: 'visible', timeout: 30000 });
+   await page.getByRole('button', { name: 'Text' }).first().click();
 
-3. When filling inputs, wait then fill:
-   await page.getByPlaceholder('Email').waitFor({ state: 'visible', timeout: 30000 });
-   await page.getByPlaceholder('Email').fill('test@example.com');
+3. NEVER use generic locators like getByRole('textbox') or getByRole('button') without a name.
+   ALWAYS use the most specific locator available:
+   - BEST: page.getByPlaceholder('EXACT PLACEHOLDER').first()
+   - GOOD: page.getByLabel('EXACT LABEL').first()
+   - GOOD: page.locator('input[name="EXACT NAME"]').first()
+   - OK: page.getByRole('button', { name: 'EXACT TEXT' }).first()
+   - FORBIDDEN: page.getByRole('textbox') — this matches ALL text inputs and WILL fail
 
-4. For navigation that loads a new page, wait again:
-   await page.getByRole('link', { name: 'Sign Up' }).click();
+4. When filling inputs, ALWAYS use placeholder or name, never generic role:
+   await page.getByPlaceholder('Email').first().waitFor({ state: 'visible', timeout: 30000 });
+   await page.getByPlaceholder('Email').first().fill('test@example.com');
+   // OR if no placeholder, use the name attribute:
+   await page.locator('input[name="email"]').first().fill('test@example.com');
+
+5. For navigation that loads a new page, wait again:
+   await page.getByRole('link', { name: 'Sign Up' }).first().click();
    await page.waitForLoadState('networkidle');
 
-5. Use EXACT texts from the page descriptions below for locators:
-   - For buttons: page.getByRole('button', { name: 'EXACT TEXT FROM LIST' })
-   - For inputs with placeholder: page.getByPlaceholder('EXACT PLACEHOLDER')
-   - For inputs with label: page.getByLabel('EXACT LABEL')
-   - For inputs with name only: page.locator('input[name="EXACT NAME"]')
-   - For links: page.getByRole('link', { name: 'EXACT TEXT FROM LIST' })
-   - For headings: page.getByRole('heading', { name: 'EXACT TEXT' })
-
-6. If multiple elements could match, use .first() to pick the first one.
+6. Use EXACT texts from the page descriptions below for locators:
+   - For inputs with placeholder: page.getByPlaceholder('EXACT PLACEHOLDER').first()
+   - For inputs with label: page.getByLabel('EXACT LABEL').first()
+   - For inputs with name only: page.locator('input[name="EXACT NAME"]').first()
+   - For buttons: page.getByRole('button', { name: 'EXACT TEXT FROM LIST' }).first()
+   - For links: page.getByRole('link', { name: 'EXACT TEXT FROM LIST' }).first()
+   - For headings: page.getByRole('heading', { name: 'EXACT TEXT' }).first()
 
 7. NEVER guess or invent button/link/input text — ONLY use what is listed in the page descriptions below.
-   If no UI elements are listed for a page, use page.locator() with CSS selectors as fallback.
 
 8. For testing form submission:
    - Fill ALL required fields before submitting
