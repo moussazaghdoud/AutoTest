@@ -477,6 +477,273 @@ function decryptTarget(target) {
   return target;
 }
 
+// ========== v3: INTENT ENGINE & TEST PLANS ==========
+
+app.post('/api/targets/:id/plans', async (req, res) => {
+  const db = await getDb();
+  const target = decryptTarget(get(db, 'SELECT * FROM targets WHERE id = ?', [req.params.id]));
+  if (!target) return res.status(404).json({ error: 'Target not found' });
+
+  const { intent, scan_id } = req.body;
+  if (!intent) return res.status(400).json({ error: 'intent required' });
+
+  try {
+    const { IntentEngine } = require('./engine/intent-engine');
+    const engine = new IntentEngine();
+    const plan = await engine.generatePlan(intent, parseInt(req.params.id), scan_id);
+    res.status(201).json(plan);
+  } catch (err) {
+    console.error('[IntentEngine] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/targets/:id/plans', async (req, res) => {
+  const db = await getDb();
+  res.json(all(db, 'SELECT * FROM test_plans WHERE target_id = ? ORDER BY created_at DESC', [req.params.id]));
+});
+
+app.get('/api/plans/:id', async (req, res) => {
+  const db = await getDb();
+  const plan = get(db, 'SELECT * FROM test_plans WHERE id = ?', [req.params.id]);
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+  const cases = all(db, 'SELECT * FROM test_plan_cases WHERE plan_id = ? ORDER BY priority DESC, id ASC', [req.params.id]);
+  res.json({ ...plan, test_cases: cases });
+});
+
+// Execute a test plan — generates Playwright specs from plan and runs them
+app.post('/api/plans/:id/execute', async (req, res) => {
+  const db = await getDb();
+  const plan = get(db, 'SELECT * FROM test_plans WHERE id = ?', [req.params.id]);
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+  const target = decryptTarget(get(db, 'SELECT * FROM targets WHERE id = ?', [plan.target_id]));
+  if (!target) return res.status(404).json({ error: 'Target not found' });
+
+  // Create a test run linked to this plan
+  const result = run(db,
+    `INSERT INTO test_runs (target_id, scan_id, test_types, ai_prompt, plan_id, status, started_at)
+     VALUES (?, ?, '["plan"]', ?, ?, 'running', datetime('now'))`,
+    [target.id, null, plan.intent, plan.id]
+  );
+  const runId = result.lastInsertRowid;
+
+  res.status(202).json({ run_id: runId, status: 'running' });
+
+  // Execute asynchronously
+  try {
+    const { IntentEngine } = require('./engine/intent-engine');
+    const engine = new IntentEngine();
+    const specFiles = await engine.planToPlaywright(plan.id, target);
+
+    // Write spec files
+    const generatedDir = path.join(__dirname, 'generated-tests');
+    if (fs.existsSync(generatedDir)) fs.rmSync(generatedDir, { recursive: true });
+    fs.mkdirSync(generatedDir, { recursive: true });
+
+    for (const [filename, code] of Object.entries(specFiles)) {
+      fs.writeFileSync(path.join(generatedDir, filename), code);
+    }
+
+    emitSse('run', runId, 'generation_done', { categories: Object.keys(specFiles), total: Object.keys(specFiles).length });
+    emitSse('run', runId, 'status', { phase: 'executing' });
+
+    // Execute with orchestrator
+    const { Orchestrator } = require('./runner/orchestrator');
+    const orchestrator = new Orchestrator();
+    const { report, summary } = await orchestrator.execute(runId);
+
+    // Update coverage entries
+    const cases = all(db, 'SELECT * FROM test_plan_cases WHERE plan_id = ?', [plan.id]);
+    const testResults = all(db, 'SELECT * FROM test_results WHERE run_id = ?', [runId]);
+    for (const tc of cases) {
+      const matching = testResults.find(r => r.test_name === tc.name);
+      if (matching) {
+        run(db,
+          `UPDATE coverage_entries SET status = ?, covered_at = datetime('now') WHERE plan_id = ? AND test_case = ?`,
+          [matching.status, plan.id, tc.name]
+        );
+      }
+    }
+
+    emitSse('run', runId, 'done', { summary: report.summary });
+  } catch (err) {
+    console.error(`[Plan Execute] ERROR:`, err);
+    run(db, `UPDATE test_runs SET status='error', summary=?, finished_at=datetime('now') WHERE id=?`,
+      [JSON.stringify({ error: err.message }), runId]);
+    emitSse('run', runId, 'error', { message: err.message });
+  }
+});
+
+// ========== v3: COVERAGE ==========
+
+app.get('/api/plans/:id/coverage', async (req, res) => {
+  const db = await getDb();
+  const entries = all(db, 'SELECT * FROM coverage_entries WHERE plan_id = ?', [req.params.id]);
+  const plan = get(db, 'SELECT * FROM test_plans WHERE id = ?', [req.params.id]);
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+  const objectives = JSON.parse(plan.objectives || '[]');
+  const coverage = {};
+  for (const obj of objectives) {
+    const objEntries = entries.filter(e => e.objective === obj.title);
+    coverage[obj.id] = {
+      objective: obj.title,
+      total: objEntries.length,
+      covered: objEntries.filter(e => e.status === 'passed').length,
+      failed: objEntries.filter(e => e.status === 'failed').length,
+      pending: objEntries.filter(e => e.status === 'pending').length,
+      rate: objEntries.length > 0 ? Math.round((objEntries.filter(e => e.status === 'passed').length / objEntries.length) * 100) : 0,
+    };
+  }
+  res.json({ plan_id: plan.id, intent: plan.intent, coverage });
+});
+
+// ========== v3: FLAKINESS ==========
+
+app.get('/api/targets/:id/flaky', async (req, res) => {
+  const db = await getDb();
+  res.json(all(db,
+    `SELECT * FROM flaky_tests WHERE target_id = ? ORDER BY flake_rate DESC`,
+    [req.params.id]
+  ));
+});
+
+app.post('/api/flaky/:id/quarantine', async (req, res) => {
+  const db = await getDb();
+  const { action } = req.body; // 'quarantine' or 'unquarantine'
+  if (action === 'quarantine') {
+    run(db, `UPDATE flaky_tests SET is_quarantined = 1, quarantined_at = datetime('now') WHERE id = ?`, [req.params.id]);
+  } else {
+    run(db, `UPDATE flaky_tests SET is_quarantined = 0, quarantined_at = NULL WHERE id = ?`, [req.params.id]);
+  }
+  res.json({ ok: true });
+});
+
+// ========== v3: ENVIRONMENTS ==========
+
+app.get('/api/environments', async (req, res) => {
+  const db = await getDb();
+  res.json(all(db, 'SELECT * FROM environments ORDER BY is_default DESC, name ASC'));
+});
+
+app.post('/api/environments', async (req, res) => {
+  const db = await getDb();
+  const { name, base_url, variables, accounts } = req.body;
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const result = run(db,
+    `INSERT INTO environments (name, base_url, variables, accounts) VALUES (?, ?, ?, ?)`,
+    [name, base_url || null, JSON.stringify(variables || {}), JSON.stringify(accounts || {})]
+  );
+  res.status(201).json(get(db, 'SELECT * FROM environments WHERE id = ?', [result.lastInsertRowid]));
+});
+
+// ========== v3: ARTIFACTS ==========
+
+app.get('/api/runs/:id/artifacts', async (req, res) => {
+  const db = await getDb();
+  res.json(all(db, 'SELECT * FROM artifacts WHERE run_id = ? ORDER BY type, name', [req.params.id]));
+});
+
+// Serve artifact files
+app.use('/artifacts', express.static(path.join(__dirname, 'test-results', 'artifacts')));
+
+// ========== v3: STRUCTURED JSON EXPORT ==========
+
+app.get('/api/runs/:id/export', async (req, res) => {
+  const db = await getDb();
+  const r = get(db, 'SELECT * FROM test_runs WHERE id = ?', [req.params.id]);
+  if (!r) return res.status(404).json({ error: 'Run not found' });
+
+  const results = all(db, 'SELECT * FROM test_results WHERE run_id = ? ORDER BY category, test_name', [req.params.id]);
+  const target = get(db, 'SELECT name, base_url FROM targets WHERE id = ?', [r.target_id]);
+  const artifacts = all(db, 'SELECT * FROM artifacts WHERE run_id = ?', [req.params.id]);
+  const summary = JSON.parse(r.summary || '{}');
+
+  res.json({
+    meta: {
+      runId: r.id,
+      target: target ? { name: target.name, url: target.base_url } : null,
+      environment: r.environment,
+      gitSha: r.git_sha,
+      gitBranch: r.git_branch,
+      browser: r.browser,
+      startedAt: r.started_at,
+      finishedAt: r.finished_at,
+      testTypes: JSON.parse(r.test_types || '[]'),
+      intent: r.ai_prompt,
+    },
+    summary,
+    results: results.map(tr => ({
+      name: tr.test_name,
+      category: tr.category,
+      status: tr.status,
+      duration: tr.duration,
+      severity: tr.severity,
+      retryCount: tr.retry_count,
+      isFlaky: !!tr.is_flaky,
+      isQuarantined: !!tr.is_quarantined,
+      error: tr.error_message,
+      defectSummary: tr.defect_summary,
+      featureArea: tr.feature_area,
+    })),
+    artifacts: artifacts.map(a => ({
+      type: a.type,
+      name: a.name,
+      path: a.path,
+    })),
+  });
+});
+
+// ========== v3: DASHBOARD OVERVIEW ==========
+
+app.get('/api/dashboard/overview', async (req, res) => {
+  const db = await getDb();
+  const targets = all(db, 'SELECT * FROM targets ORDER BY created_at DESC');
+  const recentRuns = all(db,
+    `SELECT tr.*, t.name as target_name, t.base_url as target_url
+     FROM test_runs tr JOIN targets t ON tr.target_id = t.id
+     WHERE tr.status = 'done' ORDER BY tr.started_at DESC LIMIT 20`
+  );
+
+  // Calculate overall stats
+  let totalTests = 0, totalPassed = 0, totalFailed = 0;
+  for (const r of recentRuns) {
+    const s = JSON.parse(r.summary || '{}');
+    totalTests += s.total || 0;
+    totalPassed += s.passed || 0;
+    totalFailed += s.failed || 0;
+  }
+
+  const flakyCount = all(db, `SELECT COUNT(*) as count FROM flaky_tests WHERE flake_rate > 0.2`)[0]?.count || 0;
+  const quarantinedCount = all(db, `SELECT COUNT(*) as count FROM flaky_tests WHERE is_quarantined = 1`)[0]?.count || 0;
+
+  res.json({
+    targets: targets.length,
+    recentRuns: recentRuns.map(r => ({
+      id: r.id,
+      targetName: r.target_name,
+      targetUrl: r.target_url,
+      summary: JSON.parse(r.summary || '{}'),
+      startedAt: r.started_at,
+      finishedAt: r.finished_at,
+      environment: r.environment,
+      browser: r.browser,
+      gitSha: r.git_sha,
+    })),
+    overallStats: {
+      totalRuns: recentRuns.length,
+      totalTests,
+      totalPassed,
+      totalFailed,
+      avgPassRate: totalTests > 0 ? Math.round((totalPassed / totalTests) * 100) : 0,
+      flakyCount,
+      quarantinedCount,
+    },
+  });
+});
+
 // ========== SPA Fallback ==========
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -484,8 +751,17 @@ app.get('*', (req, res) => {
 
 async function start() {
   await getDb();
+
+  // Run v3 migration
+  try {
+    const { migrateToV3 } = require('./db/migrate-v3');
+    await migrateToV3();
+  } catch (err) {
+    console.log('[Migrate] v3 migration skipped:', err.message);
+  }
+
   app.listen(PORT, () => {
-    console.log(`AutoTest dashboard running at http://localhost:${PORT}`);
+    console.log(`AutoTest v3 dashboard running at http://localhost:${PORT}`);
   });
 }
 

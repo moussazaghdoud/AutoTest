@@ -5,6 +5,10 @@ const App = {
     Discovery.init();
     Runner.init();
     History.init();
+    DashboardOverview.init();
+    IntentPlanner.init();
+    CoverageView.init();
+    FlakyView.init();
 
     // Navigation
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -16,11 +20,19 @@ const App = {
     });
 
     // Handle initial hash
-    const hash = location.hash.replace('#', '') || 'targets';
+    const hash = location.hash.replace('#', '') || 'dashboard';
     this.switchView(hash);
 
     // Load initial data
     this.loadTargets();
+
+    // Drilldown modal close
+    document.getElementById('drilldownClose')?.addEventListener('click', () => {
+      document.getElementById('drilldownOverlay').classList.remove('open');
+    });
+    document.getElementById('drilldownOverlay')?.addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+    });
   },
 
   switchView(name) {
@@ -33,9 +45,13 @@ const App = {
     if (link) link.classList.add('active');
 
     // Load view-specific data
+    if (name === 'dashboard') DashboardOverview.load();
     if (name === 'discovery') Discovery.loadTargetSelect();
     if (name === 'runner') Runner.loadTargetSelect();
     if (name === 'history') History.loadTargetSelect();
+    if (name === 'intent') IntentPlanner.loadTargetSelect();
+    if (name === 'coverage') CoverageView.loadTargetSelect();
+    if (name === 'flaky') FlakyView.loadTargetSelect();
   },
 
   async loadTargets() {

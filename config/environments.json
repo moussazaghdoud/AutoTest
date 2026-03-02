@@ -1,0 +1,48 @@
+{
+  "environments": {
+    "local": {
+      "description": "Local development",
+      "baseUrl": "http://localhost:3000",
+      "accounts": {
+        "admin": { "email": "admin@test.local", "password": "AdminTest123!" },
+        "user": { "email": "user@test.local", "password": "UserTest123!" },
+        "readonly": { "email": "reader@test.local", "password": "ReadTest123!" }
+      },
+      "variables": {
+        "TIMEOUT_MULTIPLIER": 1,
+        "ENABLE_MOCKS": true
+      }
+    },
+    "staging": {
+      "description": "Staging environment",
+      "baseUrl": "https://staging.example.com",
+      "accounts": {
+        "admin": { "email": "admin@staging.example.com", "password": "${STAGING_ADMIN_PASSWORD}" },
+        "user": { "email": "user@staging.example.com", "password": "${STAGING_USER_PASSWORD}" }
+      },
+      "variables": {
+        "TIMEOUT_MULTIPLIER": 1.5,
+        "ENABLE_MOCKS": false
+      }
+    },
+    "production": {
+      "description": "Production (read-only tests only)",
+      "baseUrl": "https://www.example.com",
+      "accounts": {
+        "readonly": { "email": "${PROD_READONLY_EMAIL}", "password": "${PROD_READONLY_PASSWORD}" }
+      },
+      "variables": {
+        "TIMEOUT_MULTIPLIER": 2,
+        "ENABLE_MOCKS": false,
+        "READONLY_MODE": true
+      }
+    }
+  },
+  "defaults": {
+    "browser": "chromium",
+    "viewport": { "width": 1280, "height": 720 },
+    "retries": 2,
+    "workers": 2,
+    "timeout": 120000
+  }
+}

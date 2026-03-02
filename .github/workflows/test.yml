@@ -1,0 +1,141 @@
+name: AutoTest CI
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+  schedule:
+    # Nightly full suite at 2am UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # Lint test code for basic quality
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Check for syntax errors in generators
+        run: |
+          node -c server.js
+          node -c engine/discovery-orchestrator.js
+          node -c engine/auth-manager.js
+          node -c engine/intent-engine.js
+          node -c runner/orchestrator.js
+          node -c runner/test-runner.js
+          node -c runner/result-collector.js
+          node -c generator/test-generator.js
+
+  # Smoke tests on PR
+  smoke:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Start server
+        run: |
+          node server.js &
+          sleep 3
+        env:
+          PORT: 4000
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Run smoke tests
+        run: |
+          # Quick API health check
+          curl -f http://localhost:4000/api/targets || exit 1
+          curl -f http://localhost:4000/api/environments || exit 1
+          echo "Smoke tests passed"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-artifacts
+          path: test-results/
+          retention-days: 7
+
+  # Full test suite on main branch and nightly
+  full-suite:
+    name: Full Test Suite
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Start server
+        run: |
+          node server.js &
+          sleep 3
+        env:
+          PORT: 4000
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Run full suite
+        run: npx playwright test
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
+          PW_RETRIES: 2
+          PW_WORKERS: 2
+          PW_TRACE: on-first-retry
+          PW_VIDEO: retain-on-failure
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.sha }}
+          path: |
+            test-results/
+            !test-results/artifacts/*/videos/
+          retention-days: 30
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-report-${{ github.sha }}
+          path: test-results/artifacts/html-report/
+          retention-days: 30
+
+      - name: Upload video artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-videos-${{ github.sha }}
+          path: test-results/artifacts/*/videos/
+          retention-days: 14
+
+      # Post summary as PR comment (if triggered by push associated with a PR)
+      - name: Post summary
+        if: always()
+        run: |
+          if [ -f test-results/artifacts/*/summary.md ]; then
+            cat test-results/artifacts/*/summary.md
+          fi

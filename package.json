@@ -1,12 +1,16 @@
 {
   "name": "autotest",
-  "version": "2.0.0",
-  "description": "Generic web application testing framework with auto-discovery",
+  "version": "3.0.0",
+  "description": "AI-powered web application QA platform with auto-discovery, intent-driven test generation, and professional dashboard",
   "main": "server.js",
   "scripts": {
     "build": "npx playwright install --with-deps chromium",
     "start": "node server.js",
-    "test": "npx playwright test"
+    "test": "npx playwright test",
+    "test:smoke": "npx playwright test --grep @smoke",
+    "test:full": "PW_RETRIES=2 PW_TRACE=on-first-retry npx playwright test",
+    "migrate": "node db/migrate-v3.js",
+    "lint": "node -c server.js && node -c engine/auth-manager.js && node -c engine/intent-engine.js && node -c runner/orchestrator.js"
   },
   "dependencies": {
     "@playwright/test": "^1.49.0",
